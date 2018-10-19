@@ -148,10 +148,12 @@ namespace AfficheurGPS
 			catch (SecurityException)
 			{
 				// The user does not have the permissions required to read from the registry key.
+				Console.WriteLine("The user does not have the permissions required to read from the registry key.");
 			}
 			catch (UnauthorizedAccessException)
 			{
 				// The user does not have the necessary registry rights.
+				Console.WriteLine("The user does not have the necessary registry rights.");
 			}
 
 			return result;

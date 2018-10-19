@@ -55,7 +55,6 @@
 			this.SizeGripStyle = System.Windows.Forms.SizeGripStyle.Hide;
 			this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
 			this.Text = "Afficheur";
-			this.TopMost = true;
 			this.WindowState = System.Windows.Forms.FormWindowState.Minimized;
 			this.Load += new System.EventHandler(this.Afficheur_Load);
 			this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Afficheur_KeyDown);
