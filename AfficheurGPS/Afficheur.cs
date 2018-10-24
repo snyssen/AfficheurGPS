@@ -47,7 +47,13 @@ namespace AfficheurGPS
 				//browser.Navigate()
 			}
 			else
-				browser.Navigate("https://snyssen.be");
+			{
+				string curDir = Directory.GetCurrentDirectory();
+				this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGPS.html", curDir));
+
+				// Cette méthode doit être lancée dans un nouveau thread !
+				GetPosition();
+			}
 		}
 
 		private void Afficheur_Load(object sender, EventArgs e)
@@ -74,9 +80,6 @@ namespace AfficheurGPS
 			headline = headline.PadRight(100, '=');
 			Console.WriteLine(headline);
 			SIM808.Close();
-			// On se désabonne des événements le temps du test, pour pouvoir lire la réponse en pulling => bloquant
-			SIM808.DataReceived -= SP_DataReceived;
-			SIM808.ErrorReceived -= SP_ErrorReceived;
 			ConnectedToSIM808 = false;
 			Console.WriteLine("Recherche du port utilisé par le GPS");
 			string[] ports = SerialPort.GetPortNames(); // Récupère les ports utilisés
@@ -91,7 +94,9 @@ namespace AfficheurGPS
 					Console.WriteLine("Commande envoyé, attente de la réponse");
 					string response = SIM808.ReadLine();
 					Console.WriteLine(response);
-					if (response == "OK")
+					response = SIM808.ReadLine();
+					Console.WriteLine(response);
+					if (response.Trim() == "OK")
 					{
 						Console.WriteLine("Module SIM808 reconnu !");
 						Console.WriteLine("Configuration...");
@@ -99,18 +104,25 @@ namespace AfficheurGPS
 						SIM808.WriteLine("AT+IPR=" + SIM808.BaudRate);
 						response = SIM808.ReadLine();
 						Console.WriteLine(response);
-						if (response == "OK")
+						response = SIM808.ReadLine();
+						Console.WriteLine(response);
+						if (response.Trim() == "OK")
 						{
 							Console.WriteLine("Sauvegarde de la config");
 							SIM808.WriteLine("AT&W");
+							response = SIM808.ReadLine();
 							Console.WriteLine(response);
-							if (response == "OK")
+							response = SIM808.ReadLine();
+							Console.WriteLine(response);
+							if (response.Trim() == "OK")
 							{
 								Console.WriteLine("Activation du module GPS");
 								SIM808.WriteLine("AT+CGPSPWR=1");
 								response = SIM808.ReadLine();
 								Console.WriteLine(response);
-								if (response == "OK")
+								response = SIM808.ReadLine();
+								Console.WriteLine(response);
+								if (response.Trim() == "OK")
 								{
 									// Ajouter vérif que le GPS a un signal (cmd = "AT+CGPSSTATUS?", renvoie = "+CGPSSTATUS: Location Not Fix \n OK" si pas de position OU = "+CGPSSTATUS: Location 3D Fix \n OK" si pos fixée) ? Dans une méthode à part peut être ?
 
@@ -140,9 +152,6 @@ namespace AfficheurGPS
 				// END if IsOpen
 				if (ConnectedToSIM808) // Si on est bien connecté
 				{
-					// On se réabonne aux événements
-					SIM808.DataReceived += SP_DataReceived;
-					SIM808.ErrorReceived += SP_ErrorReceived;
 					Console.WriteLine("Tout fonctionne correctement !");
 					break;
 				}
@@ -156,31 +165,35 @@ namespace AfficheurGPS
 			Console.WriteLine(headline);
 		}
 
-		private void SP_ErrorReceived(object sender, SerialErrorReceivedEventArgs e)
+		private void GetPosition()
 		{
-			Console.WriteLine("Une erreur est survenue sur le port série du GPS !\n" + e.ToString());
-			Console.WriteLine("Reconnexion...");
-			SelectGPSPort();
-		}
-
-		private void SP_DataReceived(object sender, SerialDataReceivedEventArgs e)
-		{
-			SerialPort sp = (SerialPort)sender;
-			try
+			if (ConnectedToSIM808)
 			{
-				string Donnees = sp.ReadLine();
-				// A tester ? Devrait permettre de récupérer TOUTES les données du buffer, contrairement à ReadLine qui ne lira que la première ligne
-				// Logiquement pas utile dans notre cas vu qu'on lit les données en une seule ligne, qui sont les réponses à nos commandes
-				//string Donnees = sp.ReadExisting();
-				Console.WriteLine("Données GPS reçues : " + Donnees);
-				// DEBUG
-				// Je ne suis pas sûr de ce que contient l'EventArgs ici, pour le test je vais donc le print :-)
-				Console.WriteLine(e.ToString());
+				string headline = "Tentative de récupération de la position GPS";
+				headline = headline.PadLeft(50, '=');
+				headline = headline.PadRight(100, '=');
+				Console.WriteLine(headline);
+				string response;
+				do
+				{
+					Console.WriteLine("AT+CGPSSTATUS?");
+					SIM808.WriteLine("AT+CGPSSTATUS?");
+					response = SIM808.ReadLine();
+					System.Threading.Thread.Sleep(5000);
+				}
+				while (response != "+CGPSSTATUS: Location 3D Fix");
+				Console.WriteLine("Position fixée !");
+				headline = "";
+				headline = headline.PadRight(100, '=');
+				Console.WriteLine(headline);
+				Console.WriteLine("Position GPS :");
+				Console.WriteLine("AT+CGPSINF=0");
+				SIM808.WriteLine("AT+CGPSINF=0");
+				response = SIM808.ReadLine();
+				Console.WriteLine("Réponse : " + response);
 			}
-			catch (Exception ex)
-			{
-				Console.WriteLine("Erreur lors de la lecture des données GPS ! " + ex.ToString());
-			}
+			else
+				Console.WriteLine("Pas de connexion au module GPS, impossible de récupérer la position !");
 		}
 	}
 }
