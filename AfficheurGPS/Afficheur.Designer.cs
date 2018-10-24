@@ -42,6 +42,7 @@
 			this.browser.ScriptErrorsSuppressed = true;
 			this.browser.Size = new System.Drawing.Size(784, 561);
 			this.browser.TabIndex = 0;
+			this.browser.PreviewKeyDown += new System.Windows.Forms.PreviewKeyDownEventHandler(this.browser_PreviewKeyDown);
 			// 
 			// Afficheur
 			// 
@@ -56,8 +57,8 @@
 			this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
 			this.Text = "Afficheur";
 			this.WindowState = System.Windows.Forms.FormWindowState.Minimized;
+			this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Afficheur_FormClosing);
 			this.Load += new System.EventHandler(this.Afficheur_Load);
-			this.KeyDown += new System.Windows.Forms.KeyEventHandler(this.Afficheur_KeyDown);
 			this.ResumeLayout(false);
 
 		}
