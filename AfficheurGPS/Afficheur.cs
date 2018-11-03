@@ -1,7 +1,7 @@
 ﻿/*
  * 
  * TO-DO : 
- * -> Si connection série OK, récupérer coordonnées GPS
+ * -> Traiter coordonnées GPS
  * -> Envoyer ces données au serveur (Requête SQL ?) => voir avec Hugues
  *		=> Intégrer modèle en couches à ce programme
  * -> Attendre réponse serveur et générer la page web à partir des données récup => voir avec Ju et Robin
@@ -36,7 +36,7 @@ namespace AfficheurGPS
 			InitializeComponent();
 			SIM808 = new SerialPort
 			{
-				ReadTimeout = 1000, // Permet l'envoie d'une erreur timeout si la méthode ReadLine() ne reçoit aucune donnée après 1 secondes
+				ReadTimeout = 1000, // Permet l'envoi d'une erreur timeout si la méthode ReadLine() ne reçoit aucune donnée après 1 secondes
 				BaudRate = 9600,
 				Parity = Parity.None,
 				DataBits = 8,
@@ -91,6 +91,7 @@ namespace AfficheurGPS
 
 		private void SelectGPSPort()
 		{
+			string response;
 			string headline = "Selection du GPS";
 			headline = headline.PadLeft(50, '=');
 			headline = headline.PadRight(100, '=');
@@ -105,63 +106,73 @@ namespace AfficheurGPS
 				SIM808.Open();
 				if(SIM808.IsOpen)
 				{
-					Console.WriteLine("Port " + port + " ouvert, envoi de la commande AT");
-					SIM808.WriteLine("AT");
-					Console.WriteLine("Commande envoyé, attente de la réponse");
-					string response = SIM808.ReadLine();
-					Console.WriteLine(response);
-					response = SIM808.ReadLine();
-					Console.WriteLine(response);
-					if (response.Trim() == "OK")
+					// On vide les buffers par sécurité
+					SIM808.DiscardInBuffer();
+					SIM808.DiscardOutBuffer();
+					try
 					{
-						Console.WriteLine("Module SIM808 reconnu !");
-						Console.WriteLine("Configuration...");
-						Console.WriteLine("Baudrate = " + SIM808.BaudRate);
-						SIM808.WriteLine("AT+IPR=" + SIM808.BaudRate);
+						Console.WriteLine("Port " + port + " ouvert, envoi de la commande AT");
+						SIM808.WriteLine("AT");
+						Console.WriteLine("Commande envoyé, attente de la réponse");
 						response = SIM808.ReadLine();
 						Console.WriteLine(response);
 						response = SIM808.ReadLine();
 						Console.WriteLine(response);
 						if (response.Trim() == "OK")
 						{
-							Console.WriteLine("Sauvegarde de la config");
-							SIM808.WriteLine("AT&W");
+							Console.WriteLine("Module SIM808 reconnu !");
+							Console.WriteLine("Configuration...");
+							Console.WriteLine("Baudrate = " + SIM808.BaudRate);
+							SIM808.WriteLine("AT+IPR=" + SIM808.BaudRate);
 							response = SIM808.ReadLine();
 							Console.WriteLine(response);
 							response = SIM808.ReadLine();
 							Console.WriteLine(response);
 							if (response.Trim() == "OK")
 							{
-								Console.WriteLine("Activation du module GPS");
-								SIM808.WriteLine("AT+CGPSPWR=1");
+								Console.WriteLine("Sauvegarde de la config");
+								SIM808.WriteLine("AT&W");
 								response = SIM808.ReadLine();
 								Console.WriteLine(response);
 								response = SIM808.ReadLine();
 								Console.WriteLine(response);
 								if (response.Trim() == "OK")
 								{
-									// ON EST CONNECTE, TOUT EST OK
-									ConnectedToSIM808 = true;
+									Console.WriteLine("Activation du module GPS");
+									SIM808.WriteLine("AT+CGPSPWR=1");
+									response = SIM808.ReadLine();
+									Console.WriteLine(response);
+									response = SIM808.ReadLine();
+									Console.WriteLine(response);
+									if (response.Trim() == "OK")
+									{
+										// ON EST CONNECTE, TOUT EST OK
+										ConnectedToSIM808 = true;
+									}
+									else
+									{
+										Console.WriteLine("ERREUR : le GPS n'a pas su s'intialiser");
+									}
 								}
 								else
 								{
-									Console.WriteLine("ERREUR : le GPS n'a pas su s'intialiser");
+									Console.WriteLine("ERREUR : Impossible de sauvegarder la configuration");
 								}
 							}
 							else
 							{
-								Console.WriteLine("ERREUR : Impossible de sauvegarder la configuration");
+								Console.WriteLine("ERREUR : Impossible de set le baudrate");
 							}
 						}
 						else
 						{
-							Console.WriteLine("ERREUR : Impossible de set le baudrate");
+							Console.WriteLine("Ce module ne répond pas au AT, ce n'est pas un SIM808");
 						}
-					}
-					else
-					{
-						Console.WriteLine("Ce module ne répond pas au AT, ce n'est pas un SIM808");
-					}
+					} // END try
+
+					catch (TimeoutException) { Console.WriteLine("ERREUR : timeout dépassé lors de la lecture sur le port série ! (timeout = 1 seconde)"); }
+					catch (Exception ex) { Console.WriteLine("ERREUR sur le port série !\n" + ex.ToString()); }
+					
 				}
 				// END if IsOpen
 				if (ConnectedToSIM808) // Si on est bien connecté
@@ -188,42 +199,49 @@ namespace AfficheurGPS
 				headline = headline.PadRight(100, '=');
 				Console.WriteLine(headline);
 				string response;
-				do
+				try
 				{
-					Console.WriteLine("Envoi de AT+CGPSSTATUS?");
-					SIM808.WriteLine("AT+CGPSSTATUS?");
-					response = SIM808.ReadLine();
+					do
+					{
+						Console.WriteLine("Envoi de AT+CGPSSTATUS?");
+						SIM808.WriteLine("AT+CGPSSTATUS?");
+						response = SIM808.ReadLine();
+						Console.WriteLine(response);
+						response = SIM808.ReadLine();
+						Console.WriteLine(response);
+						// Attente pour ne pas submerger le module
+						Thread.Sleep(3000);
+					}
+					while (response.Trim() != "+CGPSSTATUS: Location 3D Fix");
+					Console.WriteLine("Position fixée !");
+					headline = "";
+					headline = headline.PadRight(100, '=');
+					Console.WriteLine(headline);
+					SIM808.DiscardInBuffer(); // On vide le buffer par sécurité
+					Console.WriteLine("Position GPS :");
+					Console.WriteLine("AT+CGPSINF=0");
+					SIM808.WriteLine("AT+CGPSINF=0");
+					Thread.Sleep(200); // Attente pour être sûr que la commande à le temps de s'effectuer au niveau du module SIM868
+					response = SIM808.ReadExisting();
 					Console.WriteLine(response);
-					response = SIM808.ReadLine();
+					Console.WriteLine("Tentative de parse de la réponse...");
+					string[] TmpTab = response.Split(':');
+					response = TmpTab[1];
 					Console.WriteLine(response);
-					// Attente pour ne pas submerger le module
-					Thread.Sleep(3000);
-				}
-				while (response.Trim() != "+CGPSSTATUS: Location 3D Fix");
-				Console.WriteLine("Position fixée !");
-				headline = "";
-				headline = headline.PadRight(100, '=');
-				Console.WriteLine(headline);
-				SIM808.DiscardInBuffer(); // On vide le buffer par sécurité
-				Console.WriteLine("Position GPS :");
-				Console.WriteLine("AT+CGPSINF=0");
-				SIM808.WriteLine("AT+CGPSINF=0");
-				Thread.Sleep(200); // Attente pour être sûr que la commande à le temps de s'effectuer au niveau du module SIM868
-				response = SIM808.ReadExisting();
-				Console.WriteLine(response);
-				Console.WriteLine("Tentative de parse de la réponse...");
-				string[] TmpTab = response.Split(':');
-				response = TmpTab[1];
-				Console.WriteLine(response);
-				TmpTab = response.Split(',');
-				if (double.TryParse(TmpTab[1], out CurrentLat) && double.TryParse(TmpTab[2], out CurrentLong))
-				{
-					Console.WriteLine("Parsing OK, les coordonnées sont :");
-					Console.WriteLine(CurrentLat);
-					Console.WriteLine(CurrentLong);
-				}
-				else
-					Console.WriteLine("ERREUR : le parsing n'a pas fonctionné !");
+					TmpTab = response.Split(',');
+					if (double.TryParse(TmpTab[1], out CurrentLat) && double.TryParse(TmpTab[2], out CurrentLong))
+					{
+						Console.WriteLine("Parsing OK, les coordonnées sont :");
+						Console.WriteLine(CurrentLat);
+						Console.WriteLine(CurrentLong);
+					}
+					else
+						Console.WriteLine("ERREUR : le parsing n'a pas fonctionné !");
+				} // END try
+
+				catch (TimeoutException) { Console.WriteLine("ERREUR : timeout dépassé lors de la lecture sur le port série ! (timeout = 1 seconde)"); }
+				catch (Exception ex) { Console.WriteLine("ERREUR sur le port série !\n" + ex.ToString()); }
+				
 			}
 			else
 				Console.WriteLine("ERREUR : pas de connexion au module GPS, impossible de récupérer la position !");
