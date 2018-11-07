@@ -64,6 +64,8 @@ namespace AfficheurGPS
 											  * TODO :
 											  * -> Ajouter l'envoi des coordonnées au serveur ici
 											  * 
+											  * /!\ Le callback est appelé en cas d'erreur sur le port série, il faut donc bien s'assurer que la méthode a terminé normalement avant de continuer ! /!\
+											  * 
 											  */
 					Console.WriteLine("Test callback");
 				};
@@ -96,12 +98,12 @@ namespace AfficheurGPS
 			headline = headline.PadLeft(50, '=');
 			headline = headline.PadRight(100, '=');
 			Console.WriteLine(headline);
-			SIM808.Close();
 			ConnectedToSIM808 = false;
 			Console.WriteLine("Recherche du port utilisé par le GPS");
 			string[] ports = SerialPort.GetPortNames(); // Récupère les ports utilisés
 			foreach(string port in ports)
 			{
+				SIM808.Close();
 				SIM808.PortName = port;
 				SIM808.Open();
 				if(SIM808.IsOpen)
@@ -181,6 +183,7 @@ namespace AfficheurGPS
 					break;
 				}
 			}
+			// END foreach
 			if (!ConnectedToSIM808)
 			{
 				Console.WriteLine("ERREUR : IMPOSSIBLE DE SE CONNECTER AU MODULE SIM808\nVérifiez que le module est bien connecté");
@@ -229,9 +232,28 @@ namespace AfficheurGPS
 					response = TmpTab[1];
 					Console.WriteLine(response);
 					TmpTab = response.Split(',');
-					if (double.TryParse(TmpTab[1], out CurrentLat) && double.TryParse(TmpTab[2], out CurrentLong))
+
+					string[] strCurrentLat = TmpTab[1].Split('.');
+					string[] strCurrentLong = TmpTab[2].Split('.');
+					strCurrentLat[1] = "0." + strCurrentLat[1];
+					strCurrentLong[1] = "0." + strCurrentLong[1];
+
+					if (int.TryParse(strCurrentLat[0].Substring(strCurrentLat[0].Length - 2), out int LatMinut)
+						&& int.TryParse(strCurrentLat[0].Remove(strCurrentLat[0].Length - 2), out int LatDegr)
+						&& double.TryParse(strCurrentLat[1], out double LatSecond)
+						
+						&& int.TryParse(strCurrentLong[0].Substring(strCurrentLong[0].Length - 2), out int LongMinut)
+						&& int.TryParse(strCurrentLong[0].Remove(strCurrentLong[0].Length - 2), out int LongDegr)
+						&& double.TryParse(strCurrentLong[1], out double LongSecond))
 					{
+						LatSecond = LatSecond * 60;
+						LongSecond = LongSecond * 60;
 						Console.WriteLine("Parsing OK, les coordonnées sont :");
+						Console.WriteLine(LatDegr + "° " + LatMinut + "\' " + LatSecond + "\"");
+						Console.WriteLine(LongDegr + "° " + LongMinut + "\' " + LongSecond + "\"");
+						Console.WriteLine("\nConversion en degrés décimaux :");
+						CurrentLat = ConvertDegMinSecToDecDeg(LatDegr, LatMinut, LatSecond);
+						CurrentLong = ConvertDegMinSecToDecDeg(LongDegr, LongMinut, LongSecond);
 						Console.WriteLine(CurrentLat);
 						Console.WriteLine(CurrentLong);
 					}
@@ -260,6 +282,11 @@ namespace AfficheurGPS
 				Thread.Sleep(50);
 				SIM808.Close(); // Fermeture de la connexion série
 			}
+		}
+
+		private double ConvertDegMinSecToDecDeg(int Deg, int Min, double Sec)
+		{
+			return (double)((double)Deg + ((double)Min / 60) + (Sec / 3600));
 		}
 	}
 }
