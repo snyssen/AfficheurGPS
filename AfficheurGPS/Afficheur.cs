@@ -1,12 +1,8 @@
 ﻿/*
  * 
  * TO-DO : 
- * -> Traiter coordonnées GPS
- * -> Envoyer ces données au serveur (Requête SQL ?) => voir avec Hugues
- *		=> Intégrer modèle en couches à ce programme
- * -> Attendre réponse serveur et générer la page web à partir des données récup => voir avec Ju et Robin
  * 
- * -> Ajouter sécurités autour des lectures en série (timeout notamment)
+ * -> Générer la page web à partir des données récup => voir avec Ju et Robin
  * 
  */
 
@@ -23,6 +19,14 @@ using System.IO.Ports;
 using System.IO;
 using System.Threading;
 
+using MySql;
+using MySql.Data;
+using MySql.Data.MySqlClient;
+
+using ProjetJR_Classes;
+using ProjetJR_Accès;
+using ProjetJR_Gestion;
+
 namespace AfficheurGPS
 {
 	public partial class Afficheur : Form
@@ -31,6 +35,18 @@ namespace AfficheurGPS
 		bool ConnectedToSIM808;
 		double CurrentLat, CurrentLong;
 		Thread ThGetPos;
+
+		// Configuration de connexion
+		private string server = "192.168.6.133";
+		private string database = "bd_projet_reseau";
+		private string dbUser = "iset";
+		private string dbPassword = "isetmdp2";
+		private string sshUser = "snyssen";
+		private string sshPassword = "@dminRoot12";
+		private string sshHostFingerPrint = "ssh-ed25519 256 21:b3:61:a4:0b:6f:8e:1f:fc:f9:11:d8:41:14:ee:61";
+
+		private string PathToPics = @"E:\"; // Chemin d'accès où l'afficheur pourra stocker les images qui téléchargera du serveur
+
 		public Afficheur()
 		{
 			InitializeComponent();
@@ -49,7 +65,6 @@ namespace AfficheurGPS
 			{
 				string curDir = Directory.GetCurrentDirectory();
 				this.browser.Url = new Uri(String.Format("file:///{0}/NoGPS.html", curDir));
-				//browser.Navigate()
 			}
 			else
 			{
@@ -58,17 +73,44 @@ namespace AfficheurGPS
 
 				// On récupère la position de l'afficheur
 				ThreadStart ThStGetPos = new ThreadStart(GetPosition);
-				ThStGetPos += () => { // Ajout d'une fonctione de callback
-											 /*
-											  * 
-											  * TODO :
-											  * -> Ajouter l'envoi des coordonnées au serveur ici
-											  * 
-											  * /!\ Le callback est appelé en cas d'erreur sur le port série, il faut donc bien s'assurer que la méthode a terminé normalement avant de continuer ! /!\
-											  * 
-											  */
-					Console.WriteLine("Test callback");
+				#region Callback récup coordonnées
+				ThStGetPos += () => { // Ajout d'une fonction de callback
+
+					this.browser.Url = new Uri(String.Format("file:///{0}/WaitingServer.html", curDir));
+
+					Console.WriteLine(CreateHeadline("Database"));
+					DBConnect db = new DBConnect(server, database, dbUser, dbPassword);
+
+					// Chaque message contient 4 champs :
+					// 0) ID
+					// 1) message
+					// 2) lien de l'image
+					// 3) priorite
+					// On extrait donc un tableau de 4 dimensions, chaque dimension contenant une liste
+					// Du champs en question.
+					List<string>[] messages = db.GetMessages(CurrentLong, CurrentLat);
+					if (messages != null && messages[0].Count > 0)
+					{
+						Console.WriteLine(CreateHeadline("SSH & SCP"));
+						WinSCP_Utilitaries scp = new WinSCP_Utilitaries(server, sshUser, sshPassword, sshHostFingerPrint);
+						for (int i = 0; i < messages[2].Count; i++)
+						{
+							Console.WriteLine("Remote path to file : " + messages[2][i]);
+							// Si le message contient un chemin d'accès (supposé valide)...
+							if (messages[2][i] != null && messages[2][i].Trim() != "")
+							{
+								// On télécharge le fichier (supposé une photo) et on sauvegarde son chemin d'accès local
+								messages[2][i] = scp.DowloadPic(messages[2][i], PathToPics);
+								if (messages[2][i] != null)
+								{
+									Console.WriteLine("File saved in " + messages[2][i]);
+								}
+							}
+						}
+					}
+
 				};
+				#endregion
 				ThGetPos = new Thread(ThStGetPos) { IsBackground = true };
 				ThGetPos.Start();
 			}
@@ -94,12 +136,9 @@ namespace AfficheurGPS
 		private void SelectGPSPort()
 		{
 			string response;
-			string headline = "Selection du GPS";
-			headline = headline.PadLeft(50, '=');
-			headline = headline.PadRight(100, '=');
-			Console.WriteLine(headline);
+			Console.WriteLine(CreateHeadline("GPS"));
 			ConnectedToSIM808 = false;
-			Console.WriteLine("Recherche du port utilisé par le GPS");
+			Console.WriteLine("Searching for COM port used by GPS module");
 			string[] ports = SerialPort.GetPortNames(); // Récupère les ports utilisés
 			foreach(string port in ports)
 			{
@@ -113,17 +152,16 @@ namespace AfficheurGPS
 					SIM808.DiscardOutBuffer();
 					try
 					{
-						Console.WriteLine("Port " + port + " ouvert, envoi de la commande AT");
+						Console.WriteLine("Port " + port + " open, sending AT command");
 						SIM808.WriteLine("AT");
-						Console.WriteLine("Commande envoyé, attente de la réponse");
 						response = SIM808.ReadLine();
 						Console.WriteLine(response);
 						response = SIM808.ReadLine();
 						Console.WriteLine(response);
 						if (response.Trim() == "OK")
 						{
-							Console.WriteLine("Module SIM808 reconnu !");
-							Console.WriteLine("Configuration...");
+							Console.WriteLine("SIM808 module recognized !");
+							Console.WriteLine("Configuring...");
 							Console.WriteLine("Baudrate = " + SIM808.BaudRate);
 							SIM808.WriteLine("AT+IPR=" + SIM808.BaudRate);
 							response = SIM808.ReadLine();
@@ -132,7 +170,7 @@ namespace AfficheurGPS
 							Console.WriteLine(response);
 							if (response.Trim() == "OK")
 							{
-								Console.WriteLine("Sauvegarde de la config");
+								Console.WriteLine("Saving configuration...");
 								SIM808.WriteLine("AT&W");
 								response = SIM808.ReadLine();
 								Console.WriteLine(response);
@@ -140,7 +178,7 @@ namespace AfficheurGPS
 								Console.WriteLine(response);
 								if (response.Trim() == "OK")
 								{
-									Console.WriteLine("Activation du module GPS");
+									Console.WriteLine("Initializing GPS module...");
 									SIM808.WriteLine("AT+CGPSPWR=1");
 									response = SIM808.ReadLine();
 									Console.WriteLine(response);
@@ -153,60 +191,54 @@ namespace AfficheurGPS
 									}
 									else
 									{
-										Console.WriteLine("ERREUR : le GPS n'a pas su s'intialiser");
+										Console.WriteLine("ERROR : Couldn't start GPS.");
 									}
 								}
 								else
 								{
-									Console.WriteLine("ERREUR : Impossible de sauvegarder la configuration");
+									Console.WriteLine("ERROR : Couldn't save configuration.");
 								}
 							}
 							else
 							{
-								Console.WriteLine("ERREUR : Impossible de set le baudrate");
+								Console.WriteLine("ERROR : Couldn't set baudrate.");
 							}
 						}
 						else
 						{
-							Console.WriteLine("Ce module ne répond pas au AT, ce n'est pas un SIM808");
+							Console.WriteLine("Module isn't responding to AT command, skipping...");
 						}
 					} // END try
 
-					catch (TimeoutException) { Console.WriteLine("ERREUR : timeout dépassé lors de la lecture sur le port série ! (timeout = 1 seconde)"); }
-					catch (Exception ex) { Console.WriteLine("ERREUR sur le port série !\n" + ex.ToString()); }
+					catch (TimeoutException) { Console.WriteLine("ERROR : module took too much time to respond (timeout = 1 seconde)"); }
+					catch (Exception ex) { Console.WriteLine("ERROR on the serial port !\n" + ex.ToString()); }
 					
 				}
 				// END if IsOpen
 				if (ConnectedToSIM808) // Si on est bien connecté
 				{
-					Console.WriteLine("Tout fonctionne correctement !");
+					Console.WriteLine("Module working as expected !");
 					break;
 				}
 			}
 			// END foreach
 			if (!ConnectedToSIM808)
 			{
-				Console.WriteLine("ERREUR : IMPOSSIBLE DE SE CONNECTER AU MODULE SIM808\nVérifiez que le module est bien connecté");
+				Console.WriteLine("ERROR : COULDN'T CONNECT TO SIM808 MODULE\nPlease check it is connected.");
 			}
-			headline = "";
-			headline = headline.PadRight(100, '=');
-			Console.WriteLine(headline);
 		}
 
 		private void GetPosition()
 		{
 			if (ConnectedToSIM808)
 			{
-				string headline = "Tentative de récupération de la position GPS";
-				headline = headline.PadLeft(50, '=');
-				headline = headline.PadRight(100, '=');
-				Console.WriteLine(headline);
+				Console.WriteLine(CreateHeadline("Searching for GPS signal"));
 				string response;
 				try
 				{
 					do
 					{
-						Console.WriteLine("Envoi de AT+CGPSSTATUS?");
+						Console.WriteLine("Sending AT+CGPSSTATUS?");
 						SIM808.WriteLine("AT+CGPSSTATUS?");
 						response = SIM808.ReadLine();
 						Console.WriteLine(response);
@@ -216,28 +248,28 @@ namespace AfficheurGPS
 						Thread.Sleep(3000);
 					}
 					while (response.Trim() != "+CGPSSTATUS: Location 3D Fix");
-					Console.WriteLine("Position fixée !");
-					headline = "";
-					headline = headline.PadRight(100, '=');
-					Console.WriteLine(headline);
+					Console.WriteLine("Gotcha !");
+					Console.WriteLine(CreateHeadline(""));
 					SIM808.DiscardInBuffer(); // On vide le buffer par sécurité
-					Console.WriteLine("Position GPS :");
+					Console.WriteLine("Getting coordinates :");
 					Console.WriteLine("AT+CGPSINF=0");
 					SIM808.WriteLine("AT+CGPSINF=0");
 					Thread.Sleep(200); // Attente pour être sûr que la commande à le temps de s'effectuer au niveau du module SIM868
 					response = SIM808.ReadExisting();
 					Console.WriteLine(response);
-					Console.WriteLine("Tentative de parse de la réponse...");
-					string[] TmpTab = response.Split(':');
+					Console.WriteLine("Parsing answer...");
+					string[] TmpTab = response.Split(':'); // On se débarasse de l'entête
 					response = TmpTab[1];
 					Console.WriteLine(response);
-					TmpTab = response.Split(',');
+					TmpTab = response.Split(','); // On sépare tous les arguments. On ne s'intéresse qu'aux arguments 2 et 3 (d'ID 1 et 2 dans le tableau), qui sont respectivement la latitude et la longitude, sous le format DDMM.MMMMMM
 
+					// On sépare au point décimal
 					string[] strCurrentLat = TmpTab[1].Split('.');
 					string[] strCurrentLong = TmpTab[2].Split('.');
 					strCurrentLat[1] = "0." + strCurrentLat[1];
 					strCurrentLong[1] = "0." + strCurrentLong[1];
 
+					// Et on parse ici individuellement degrés, minutes et secondes (il faut multiplier ces dernières par après)
 					if (int.TryParse(strCurrentLat[0].Substring(strCurrentLat[0].Length - 2), out int LatMinut)
 						&& int.TryParse(strCurrentLat[0].Remove(strCurrentLat[0].Length - 2), out int LatDegr)
 						&& double.TryParse(strCurrentLat[1], out double LatSecond)
@@ -246,19 +278,21 @@ namespace AfficheurGPS
 						&& int.TryParse(strCurrentLong[0].Remove(strCurrentLong[0].Length - 2), out int LongDegr)
 						&& double.TryParse(strCurrentLong[1], out double LongSecond))
 					{
+						// Pour avoir les "vraies" secondes, il faut multiplier le résultat précédent (fraction de minute) par 60
 						LatSecond = LatSecond * 60;
 						LongSecond = LongSecond * 60;
-						Console.WriteLine("Parsing OK, les coordonnées sont :");
+						Console.WriteLine("Parsing OK, coordinates are :");
 						Console.WriteLine(LatDegr + "° " + LatMinut + "\' " + LatSecond + "\"");
 						Console.WriteLine(LongDegr + "° " + LongMinut + "\' " + LongSecond + "\"");
-						Console.WriteLine("\nConversion en degrés décimaux :");
+						Console.WriteLine("\nConverting to decimal degrees :");
+						// Et enfin on convertit ces données en degrés décimaux
 						CurrentLat = ConvertDegMinSecToDecDeg(LatDegr, LatMinut, LatSecond);
 						CurrentLong = ConvertDegMinSecToDecDeg(LongDegr, LongMinut, LongSecond);
 						Console.WriteLine(CurrentLat);
 						Console.WriteLine(CurrentLong);
 					}
 					else
-						Console.WriteLine("ERREUR : le parsing n'a pas fonctionné !");
+						Console.WriteLine("ERROR : parsing didn't work !");
 				} // END try
 
 				catch (TimeoutException) { Console.WriteLine("ERREUR : timeout dépassé lors de la lecture sur le port série ! (timeout = 1 seconde)"); }
@@ -266,7 +300,7 @@ namespace AfficheurGPS
 				
 			}
 			else
-				Console.WriteLine("ERREUR : pas de connexion au module GPS, impossible de récupérer la position !");
+				Console.WriteLine("ERROR : No connection to GPS module, impossible to get position !");
 		}
 
 		private void Afficheur_FormClosing(object sender, FormClosingEventArgs e)
@@ -276,10 +310,12 @@ namespace AfficheurGPS
 					ThGetPos.Abort();
 			if (SIM808.IsOpen)
 			{
+				// J'ai retiré l'extinction du module vu la lenteur du redémarrage de celui-ci....
+				/*
 				SIM808.WriteLine("AT+CGPSPWR=0"); // Extinction du GPS
 				Thread.Sleep(50);
 				SIM808.WriteLine("AT+CPOWD=1"); // Extinction du module
-				Thread.Sleep(50);
+				Thread.Sleep(50);*/
 				SIM808.Close(); // Fermeture de la connexion série
 			}
 		}
@@ -287,6 +323,13 @@ namespace AfficheurGPS
 		private double ConvertDegMinSecToDecDeg(int Deg, int Min, double Sec)
 		{
 			return (double)((double)Deg + ((double)Min / 60) + (Sec / 3600));
+		}
+
+		private string CreateHeadline(string headline)
+		{
+			headline = headline.PadLeft(50, '=');
+			headline = headline.PadRight(100, '=');
+			return headline;
 		}
 	}
 }
