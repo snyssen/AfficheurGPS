@@ -37,13 +37,13 @@ namespace AfficheurGPS
 		Thread ThGetPos;
 
 		// Configuration de connexion
-		private string server = "192.168.6.133";
+		private string server = "snyssen.be";
 		private string database = "bd_projet_reseau";
 		private string dbUser = "iset";
 		private string dbPassword = "isetmdp2";
-		private string sshUser = "snyssen";
+		private string sshUser = "iset";
 		private string sshPassword = "@dminRoot12";
-		private string sshHostFingerPrint = "ssh-ed25519 256 21:b3:61:a4:0b:6f:8e:1f:fc:f9:11:d8:41:14:ee:61";
+		private string sshHostFingerPrint = "ssh-ed25519 256 32:26:b0:fa:5d:bf:8f:60:66:0b:36:7a:c4:7a:b7:e3";
 
 		private string PathToPics = @"E:\"; // Chemin d'accès où l'afficheur pourra stocker les images qui téléchargera du serveur
 
@@ -92,6 +92,7 @@ namespace AfficheurGPS
 					if (messages != null && messages[0].Count > 0)
 					{
 						Console.WriteLine(CreateHeadline("SSH & SCP"));
+						bool error = false;
 						WinSCP_Utilitaries scp = new WinSCP_Utilitaries(server, sshUser, sshPassword, sshHostFingerPrint);
 						for (int i = 0; i < messages[2].Count; i++)
 						{
@@ -105,8 +106,12 @@ namespace AfficheurGPS
 								{
 									Console.WriteLine("File saved in " + messages[2][i]);
 								}
+								else
+									error = true;
 							}
 						}
+						if (!error)
+							this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGen.html", curDir));
 					}
 
 				};

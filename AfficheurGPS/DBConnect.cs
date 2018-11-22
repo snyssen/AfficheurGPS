@@ -47,12 +47,15 @@ namespace AfficheurGPS
                 switch (ex.Number)
                 {
                     case 0:
-								Console.WriteLine("Cannot connect to server.  Contact administrator");
+								Console.WriteLine("Cannot connect to server.  Contact administrator.");
                         break;
 
                     case 1045:
-								Console.WriteLine("Invalid username/password, please try again");
+								Console.WriteLine("Invalid username/password, please try again.");
                         break;
+						default:
+							Console.WriteLine("Unknown error... Error code is {0}. Error message is: {1}", ex.Number, ex.Message);
+							break;
                 }
                 return false;
             }
