@@ -19,14 +19,6 @@ using System.IO.Ports;
 using System.IO;
 using System.Threading;
 
-using MySql;
-using MySql.Data;
-using MySql.Data.MySqlClient;
-
-using ProjetJR_Classes;
-using ProjetJR_Accès;
-using ProjetJR_Gestion;
-
 namespace AfficheurGPS
 {
 	public partial class Afficheur : Form
@@ -36,9 +28,10 @@ namespace AfficheurGPS
 		double CurrentLat, CurrentLong;
 		Thread ThGetPos;
 
-		// Configuration de connexion
-		private string server = "snyssen.be";
-		private string database = "bd_projet_reseau";
+        // Configuration de connexion
+        //private string server = "192.168.1.12";
+        private string server = "snyssen.be";
+        private string database = "bd_projet_reseau";
 		private string dbUser = "iset";
 		private string dbPassword = "isetmdp2";
 		private string sshUser = "iset";
@@ -113,7 +106,10 @@ namespace AfficheurGPS
 						if (!error)
 							this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGen.html", curDir));
 					}
-
+                    else
+                    {
+                        this.browser.Url = new Uri(String.Format("file:///{0}/NoMessage.html", curDir));
+                    }
 				};
 				#endregion
 				ThGetPos = new Thread(ThStGetPos) { IsBackground = true };
