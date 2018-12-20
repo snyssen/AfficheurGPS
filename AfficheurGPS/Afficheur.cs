@@ -29,8 +29,8 @@ namespace AfficheurGPS
 		Thread ThGetPos;
 
         // Configuration de connexion
-        //private string server = "192.168.1.12";
-        private string server = "snyssen.be";
+        private string server = "192.168.1.12";
+        //private string server = "snyssen.be";
         private string database = "bd_projet_reseau";
 		private string dbUser = "iset";
 		private string dbPassword = "isetmdp2";
@@ -68,6 +68,8 @@ namespace AfficheurGPS
 				ThreadStart ThStGetPos = new ThreadStart(GetPosition);
 				#region Callback récup coordonnées
 				ThStGetPos += () => { // Ajout d'une fonction de callback
+
+                    // TODO : vérifier qu'il n'y a pas eu d'erreur avant de continuer ici (erreur sur le port série)
 
 					this.browser.Url = new Uri(String.Format("file:///{0}/WaitingServer.html", curDir));
 
@@ -235,20 +237,25 @@ namespace AfficheurGPS
 			{
 				Console.WriteLine(CreateHeadline("Searching for GPS signal"));
 				string response;
+                bool GotPos = false;
 				try
 				{
 					do
 					{
 						Console.WriteLine("Sending AT+CGPSSTATUS?");
 						SIM808.WriteLine("AT+CGPSSTATUS?");
-						response = SIM808.ReadLine();
-						Console.WriteLine(response);
-						response = SIM808.ReadLine();
-						Console.WriteLine(response);
+                        Thread.Sleep(100);
+                        while (SIM808.BytesToRead > 0 )
+                        {
+                            response = SIM808.ReadLine();
+                            Console.WriteLine(response);
+                            if (response.Trim() == "+CGPSSTATUS: Location 3D Fix")
+                                GotPos = true;
+                        }
 						// Attente pour ne pas submerger le module
 						Thread.Sleep(3000);
 					}
-					while (response.Trim() != "+CGPSSTATUS: Location 3D Fix");
+					while (!GotPos);
 					Console.WriteLine("Gotcha !");
 					Console.WriteLine(CreateHeadline(""));
 					SIM808.DiscardInBuffer(); // On vide le buffer par sécurité
