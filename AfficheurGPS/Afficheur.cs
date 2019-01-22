@@ -1,4 +1,12 @@
-﻿using System;
+﻿/*
+ * 
+ * TO-DO : 
+ * 
+ * -> Générer la page web à partir des données récup => voir avec Ju et Robin
+ * 
+ */
+
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -22,9 +30,7 @@ namespace AfficheurGPS
         string curDir = Directory.GetCurrentDirectory();
         private string PathToPics; // Chemin d'accès où l'afficheur pourra stocker les images qui téléchargera du serveur
         bool ReadyToShow;
-        int TickCount; // Index de la page affichée en ce moment && Nombre de Ticks actuel du timer (permet de compter une heure pour refresh les infos)
-
-        List<string>[] Messages;
+        int IndexOfShowedPage, TickCount; // Index de la page affichée en ce moment && Nombre de Ticks actuel du timer (permet de compter une heure pour refresh les infos)
 
         // Configuration de connexion
         private string server = "192.168.1.12";
@@ -40,7 +46,7 @@ namespace AfficheurGPS
 		{
             ReadyToShow = false;
 			InitializeComponent();
-            PathToPics = curDir;
+            PathToPics = curDir + "\\Images";
 
 			SIM808 = new SerialPort
 			{
@@ -61,10 +67,6 @@ namespace AfficheurGPS
 			{
                 // On récupère la position de l'afficheur
                 StartGetPosition();
-                // TEST
-                //CurrentLong = 5.586936;
-                //CurrentLat = 50.623461;
-                //CallbackGetPosition();
 			}
 		}
 
@@ -285,9 +287,9 @@ namespace AfficheurGPS
 
                 // Chaque message contient 4 champs :
                 // 0) ID
-                // 1) priorite
-                // 2) message
-                // 3) lien de l'image 
+                // 1) message
+                // 2) lien de l'image
+                // 3) priorite
                 // On extrait donc un tableau de 4 dimensions, chaque dimension contenant une liste
                 // Du champs en question.
                 List<string>[] messages = db.GetMessages(CurrentLong, CurrentLat);
@@ -298,20 +300,20 @@ namespace AfficheurGPS
                     WinSCP_Utilitaries scp = new WinSCP_Utilitaries(server, sshUser, sshPassword, sshHostFingerPrint);
 
                     // On vide le dossier d'images avant de télécharger les nouvelles
-                    //DirectoryInfo di = new DirectoryInfo(curDir + "\\Images");
-                    //foreach (FileInfo file in di.GetFiles()) { file.Delete(); }
+                    DirectoryInfo di = new DirectoryInfo(curDir + "\\Images");
+                    foreach (FileInfo file in di.GetFiles()) { file.Delete(); }
 
-                    for (int i = 0; i < messages[3].Count; i++)
+                    for (int i = 0; i < messages[2].Count; i++)
                     {
-                        Console.WriteLine("Remote path to file : " + messages[3][i]);
+                        Console.WriteLine("Remote path to file : " + messages[2][i]);
                         // Si le message contient un chemin d'accès (supposé valide)...
-                        if (messages[3][i] != null && messages[3][i].Trim() != "")
+                        if (messages[2][i] != null && messages[2][i].Trim() != "")
                         {
                             // On télécharge le fichier (supposé une photo) et on sauvegarde son chemin d'accès local
-                            messages[3][i] = scp.DowloadPic(messages[3][i], PathToPics);
-                            if (messages[3][i] != null)
+                            messages[2][i] = scp.DowloadPic(messages[2][i], PathToPics);
+                            if (messages[2][i] != null)
                             {
-                                Console.WriteLine("File saved in " + messages[3][i]);
+                                Console.WriteLine("File saved in " + messages[2][i]);
                             }
                             else
                                 error = true;
@@ -322,19 +324,38 @@ namespace AfficheurGPS
                         this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGen.html", curDir));
 
                         // On vide le dossier de pages générées (sauf css)
-                        //di = new DirectoryInfo(curDir + "\\GeneratedPages");
-                        //foreach (FileInfo file in di.GetFiles())
-                        //{
-                        //    if (file.Extension != ".css")
-                        //        file.Delete();
-                        //}
+                        di = new DirectoryInfo(curDir + "\\GeneratedPages");
+                        foreach (FileInfo file in di.GetFiles())
+                        {
+                            if (file.Extension != ".css")
+                                file.Delete();
+                        }
 
-                        // Assignation des messages en global
-                        Messages = messages;
+                        // Génération des pages
+                        for (int i = 0; i < messages[0].Count; i++)
+                        {
+                            if
+                            (
+                                int.TryParse(messages[0][i], out int id_information)
+                                && int.TryParse(messages[3][i], out int i_priorite)
+                            )
+                            {
+                                string i_message = messages[1][i];
+                                string i_lienimage;
+                                try
+                                {
+                                    i_lienimage = messages[2][i];
+                                }
+                                catch (IndexOutOfRangeException) { i_lienimage = null; }
+                                GeneratePage(id_information, i_priorite, i_message, i_lienimage);
+                            }
+                        }
 
-                        // restart affichage des pages
+                        // restart
                         ReadyToShow = true;
-                        MyTimer.Start(); // le timer change la page affichée à chaque tick (avec un tick toutes les 30 sec)
+                        IndexOfShowedPage = 0;
+                        MyTimer.Start();
+                        // TODO -> Afficher les pages
 
                     }
                 }
@@ -350,137 +371,53 @@ namespace AfficheurGPS
             }
         }
 
-        static public void GeneratePageGlob(List<string>[] Liste)
+        private void GeneratePage(int id_information, int i_priorite, string i_message, string i_lienimage)
         {
-            /*
-             * Liste[0] = new List<string>() : liste des id
-             * Liste[1] = new List<string>() : liste des priorités
-             * Liste[2] = new List<string>() : liste des messages
-             * Liste[3] = new List<string>() : liste des chemins des images
-             */
-
-            //Liste des index des différents types de messages
-            List<int> IndexUrg = new List<int>();
-            List<int> IndexGlo = new List<int>();
-
-            string Message = "<!DOCTYPE html><html><head><meta charset=\"utf - 8\"/><title>Affichage</title><link rel=\"stylesheet\" href=\"Style.css\"><h2>Informations du jour <img id=\"Logo\" src=\"logo.png\" alt=\"Logo de l'école\">";
-            StreamWriter sw = new StreamWriter("Index.html", false);
-            sw.Write(Message);
-
-            //Va rechercher la priorité pour voir le type de message
-            foreach (var priority in Liste[1])
+            StreamWriter sw = new StreamWriter(Path.Combine(curDir + "\\GeneratedPages", id_information + ".html"));
+            sw.WriteLine
+            (
+                "<!DOCTYPE html>\n"
+                + "<html lang=\"en\" xmlns=\"http://www.w3.org/1999/xhtml\">\n"
+                + "<head>\n"
+                + "<meta charset=\"utf - 8\"/>"
+            );
+            sw.WriteLine("<title>" + id_information + "</title>");
+            sw.WriteLine
+            (
+                "<link rel=\"stylesheet\" href=\"style.css\"/>\n"
+                + "</head>\n"
+                + "<body>\n"
+                + "<div class=\"wrapper\">"
+            );
+            string priorite;
+            switch (i_priorite)
             {
-                int i = 0;
-
-                if (priority == "2") //Message global
-                {
-                    IndexGlo.Add(i);
-                }
-                else if (priority == "3")//Message du jour
-                {
-                    IndexUrg.Add(i);
-                }
-                i++;
+                case 3:
+                    priorite = "urgent";
+                    break;
+                case 2:
+                    priorite = "normal";
+                    break;
+                case 1:
+                default:
+                    priorite = "faible";
+                    break;
             }
-
-            //Global
-            foreach (int index in IndexGlo)
-            {
-                Message = "";
-                if (Liste[3].ElementAt(index) != null)
-                {
-                    Message = "<div class=\"Global\"><p>" + Liste[2].ElementAt(index) + "<p><br><img src=\"" + Liste[3].ElementAt(index) + "\"></div>";
-                }
-                else
-                {
-                    Message = "<div class=\"Global\"><p>" + Liste[2].ElementAt(index) + "<p><br></div>";
-                }
-                sw.Write(Message);
-            }
-
-            //Urgent (bandeau)
-            string MessageU = "<textarea id=\"basetext\" style=\"display: none\">";
-            foreach (int index in IndexUrg)
-            {
-                MessageU = MessageU + "      " + Liste[2].ElementAt(index);
-            }
-            MessageU = MessageU + "</textarea>";
-            string MessageAf = "<script lang=\"javascript\"> var position = 0; var msg = document.getElementById(\"basetext\").value;" +
-                "var msg = \"     \" + msg; var longue = msg.length; var fois = (100 / msg.length) + 1; function textdefil() { " +
-                "document.form1.deftext.value = msg.substring(position, position + 2000); position++; if (position == longue) position = 0; " +
-                "setTimeout(textdefil(), 115); } window.onload = textdefil; </script><form name=\"form1\"><div align=\"center\">" +
-                "<input type=\"text\" name=\"deftext\" size=226  id=\"MsgUrg\"/></div></form>";
-            sw.Write(MessageU);
-            sw.Write(MessageAf);
+            sw.WriteLine("<p class=\"" + priorite + "\">");
+            sw.WriteLine(i_message);
+            sw.WriteLine("</p>");
+            string FileName = Path.GetFileName(i_lienimage);
+            sw.WriteLine("<img src=\"../Images/" + FileName + "\"/>");
+            sw.WriteLine
+            (
+                "</div>\n"
+                + "</body>\n"
+                + "</html>"
+            );
             sw.Close();
         }
 
-        static public void GeneratePageJour(List<string>[] Liste)
-        {
-            /*
-             * Liste[0] = new List<string>() : liste des id
-             * Liste[1] = new List<string>() : liste des priorités
-             * Liste[2] = new List<string>() : liste des messages
-             * Liste[3] = new List<string>() : liste des chemins des images
-             */
-
-            //Liste des index des différents types de messages
-            List<int> IndexUrg = new List<int>();
-            List<int> IndexDay = new List<int>();
-
-            string Message = "<!DOCTYPE html><html><head><meta charset=\"utf - 8\"/><title>Affichage</title><link rel=\"stylesheet\" href=\"Style.css\">";
-            StreamWriter sw = new StreamWriter("Index.html", false);
-            sw.Write(Message);
-
-            //Va rechercher la priorité pour voir le type de message
-            foreach (var priority in Liste[1])
-            {
-                int i = 0;
-
-                if (priority == "3") //Message urgent
-                {
-                    IndexUrg.Add(i);
-                }
-                else if (priority == "1") //Message du jour
-                {
-                    IndexDay.Add(i);
-                }
-                i++;
-            }
-
-            //Du jour
-            foreach (int index in IndexDay)
-            {
-                Message = "";
-                if (Liste[3].ElementAt(index) != null) //Si il y a un chemin d'image
-                {
-                    Message = "<div class=\"Jour\"><p>" + Liste[2].ElementAt(index) + "<p><br><img src=\"" + Liste[3].ElementAt(index) + "\"></div>";
-                }
-                else //Si pas d'image
-                {
-                    Message = "<div class=\"Jour\"><p>" + Liste[2].ElementAt(index) + "<p><br></div>";
-                }
-                sw.Write(Message);
-            }
-
-            //Urgent (bandeau)
-            string MessageU = "<textarea id=\"basetext\" style=\"display: none\">";
-            foreach (int index in IndexUrg)
-            {
-                MessageU = MessageU + "      " + Liste[2].ElementAt(index);
-            }
-            MessageU = MessageU + "</textarea>";
-            string MessageAf = "<script lang=\"javascript\"> var position = 0; var msg = document.getElementById(\"basetext\").value;" +
-                "var msg = \"     \" + msg; var longue = msg.length; var fois = (100 / msg.length) + 1; function textdefil() { " +
-                "document.form1.deftext.value = msg.substring(position, position + 2000); position++; if (position == longue) position = 0; " +
-                "setTimeout(textdefil(), 115); } window.onload = textdefil; </script><form name=\"form1\"><div align=\"center\">" +
-                "<input type=\"text\" name=\"deftext\" size=226  id=\"MsgUrg\"/></div></form>";
-            sw.Write(MessageU);
-            sw.Write(MessageAf);
-            sw.Close();
-        }
-
-        private void Afficheur_FormClosing(object sender, FormClosingEventArgs e)
+		private void Afficheur_FormClosing(object sender, FormClosingEventArgs e)
 		{
 			if (ThGetPos != null)
 				if (ThGetPos.IsAlive) // Fermeture du thread de recherche de la position si il est actif
@@ -511,13 +448,16 @@ namespace AfficheurGPS
                 StartGetPosition();
                 return;
             }
-            if (ReadyToShow) // prêt à afficher des pages
+            if (ReadyToShow)
             {
-                if (TickCount % 2 == 0)
-                    GeneratePageGlob(Messages);
-                else
-                    GeneratePageJour(Messages);
-                this.browser.Url = new Uri(String.Format("file:///{0}/Index.html", curDir));
+                DirectoryInfo di = new DirectoryInfo(curDir + "\\GeneratedPages");
+                FileInfo[] files = di.GetFiles("*.html"); // On récupère toutes les pages
+
+                this.browser.Url = new Uri(String.Format("file:///{0}/GeneratedPages/{1}", curDir, files[IndexOfShowedPage]));
+
+                IndexOfShowedPage++;
+                if (IndexOfShowedPage >= files.Count())
+                    IndexOfShowedPage = 0;
             }
         }
 
