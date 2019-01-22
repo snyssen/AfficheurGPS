@@ -101,9 +101,9 @@ namespace AfficheurGPS
                 while (dataReader.Read())
                 {
                     list[0].Add(dataReader["id_information"] + "");
-                    list[1].Add(dataReader["i_message"] + "");
-                    list[2].Add(dataReader["i_lienimage"] + "");
-						  list[3].Add(dataReader["i_priorite"] + "");
+                    list[1].Add(dataReader["i_priorite"] + "");
+                    list[2].Add(dataReader["i_message"] + "");
+				    list[3].Add(dataReader["i_lienimage"] + "");
                 }
 
                 //close Data Reader
