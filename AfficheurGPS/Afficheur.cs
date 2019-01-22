@@ -27,6 +27,7 @@ namespace AfficheurGPS
 		bool ConnectedToSIM808;
 		double CurrentLat, CurrentLong;
 		Thread ThGetPos;
+        string curDir = Directory.GetCurrentDirectory();
 
         // Configuration de connexion
         private string server = "192.168.1.12";
@@ -56,66 +57,12 @@ namespace AfficheurGPS
 				WBEmulator.SetBrowserEmulationVersion();
 			if (!ConnectedToSIM808)
 			{
-				string curDir = Directory.GetCurrentDirectory();
 				this.browser.Url = new Uri(String.Format("file:///{0}/NoGPS.html", curDir));
 			}
 			else
 			{
-				string curDir = Directory.GetCurrentDirectory();
-				this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGPS.html", curDir));
-
-				// On récupère la position de l'afficheur
-				ThreadStart ThStGetPos = new ThreadStart(GetPosition);
-				#region Callback récup coordonnées
-				ThStGetPos += () => { // Ajout d'une fonction de callback
-
-                    // TODO : vérifier qu'il n'y a pas eu d'erreur avant de continuer ici (erreur sur le port série)
-
-					this.browser.Url = new Uri(String.Format("file:///{0}/WaitingServer.html", curDir));
-
-					Console.WriteLine(CreateHeadline("Database"));
-					DBConnect db = new DBConnect(server, database, dbUser, dbPassword);
-
-					// Chaque message contient 4 champs :
-					// 0) ID
-					// 1) message
-					// 2) lien de l'image
-					// 3) priorite
-					// On extrait donc un tableau de 4 dimensions, chaque dimension contenant une liste
-					// Du champs en question.
-					List<string>[] messages = db.GetMessages(CurrentLong, CurrentLat);
-					if (messages != null && messages[0].Count > 0)
-					{
-						Console.WriteLine(CreateHeadline("SSH & SCP"));
-						bool error = false;
-						WinSCP_Utilitaries scp = new WinSCP_Utilitaries(server, sshUser, sshPassword, sshHostFingerPrint);
-						for (int i = 0; i < messages[2].Count; i++)
-						{
-							Console.WriteLine("Remote path to file : " + messages[2][i]);
-							// Si le message contient un chemin d'accès (supposé valide)...
-							if (messages[2][i] != null && messages[2][i].Trim() != "")
-							{
-								// On télécharge le fichier (supposé une photo) et on sauvegarde son chemin d'accès local
-								messages[2][i] = scp.DowloadPic(messages[2][i], PathToPics);
-								if (messages[2][i] != null)
-								{
-									Console.WriteLine("File saved in " + messages[2][i]);
-								}
-								else
-									error = true;
-							}
-						}
-						if (!error)
-							this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGen.html", curDir));
-					}
-                    else
-                    {
-                        this.browser.Url = new Uri(String.Format("file:///{0}/NoMessage.html", curDir));
-                    }
-				};
-				#endregion
-				ThGetPos = new Thread(ThStGetPos) { IsBackground = true };
-				ThGetPos.Start();
+                // On récupère la position de l'afficheur
+                StartGetPosition();
 			}
 		}
 
@@ -231,6 +178,15 @@ namespace AfficheurGPS
 			}
 		}
 
+        private void StartGetPosition()
+        {
+            this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGPS.html", curDir));
+            ThreadStart ThStGetPos = new ThreadStart(GetPosition);
+            ThStGetPos += CallbackGetPosition;
+            ThGetPos = new Thread(ThStGetPos) { IsBackground = true };
+            ThGetPos.Start();
+        }
+
 		private void GetPosition()
 		{
 			if (ConnectedToSIM808)
@@ -303,13 +259,71 @@ namespace AfficheurGPS
 						Console.WriteLine("ERROR : parsing didn't work !");
 				} // END try
 
-				catch (TimeoutException) { Console.WriteLine("ERREUR : timeout dépassé lors de la lecture sur le port série ! (timeout = 1 seconde)"); }
-				catch (Exception ex) { Console.WriteLine("ERREUR sur le port série !\n" + ex.ToString()); }
+				catch (TimeoutException) { Console.WriteLine("ERREUR : timeout dépassé lors de la lecture sur le port série ! (timeout = 1 seconde)"); ConnectedToSIM808 = false; }
+				catch (Exception ex) { Console.WriteLine("ERREUR sur le port série !\n" + ex.ToString()); ConnectedToSIM808 = false; }
 				
 			}
 			else
 				Console.WriteLine("ERROR : No connection to GPS module, impossible to get position !");
 		}
+
+        private void CallbackGetPosition()
+        {
+            if (ConnectedToSIM808)
+            {
+                this.browser.Url = new Uri(String.Format("file:///{0}/WaitingServer.html", curDir));
+
+                Console.WriteLine(CreateHeadline("Database"));
+                DBConnect db = new DBConnect(server, database, dbUser, dbPassword);
+
+                // Chaque message contient 4 champs :
+                // 0) ID
+                // 1) message
+                // 2) lien de l'image
+                // 3) priorite
+                // On extrait donc un tableau de 4 dimensions, chaque dimension contenant une liste
+                // Du champs en question.
+                List<string>[] messages = db.GetMessages(CurrentLong, CurrentLat);
+                if (messages != null && messages[0].Count > 0)
+                {
+                    Console.WriteLine(CreateHeadline("SSH & SCP"));
+                    bool error = false;
+                    WinSCP_Utilitaries scp = new WinSCP_Utilitaries(server, sshUser, sshPassword, sshHostFingerPrint);
+                    for (int i = 0; i < messages[2].Count; i++)
+                    {
+                        Console.WriteLine("Remote path to file : " + messages[2][i]);
+                        // Si le message contient un chemin d'accès (supposé valide)...
+                        if (messages[2][i] != null && messages[2][i].Trim() != "")
+                        {
+                            // On télécharge le fichier (supposé une photo) et on sauvegarde son chemin d'accès local
+                            messages[2][i] = scp.DowloadPic(messages[2][i], PathToPics);
+                            if (messages[2][i] != null)
+                            {
+                                Console.WriteLine("File saved in " + messages[2][i]);
+                            }
+                            else
+                                error = true;
+                        }
+                    }
+                    if (!error)
+                    {
+                        this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGen.html", curDir));
+
+                        // TODO : ajouter génération des pages ICI
+
+                    }
+                }
+                else
+                {
+                    this.browser.Url = new Uri(String.Format("file:///{0}/NoMessage.html", curDir));
+                }
+            }
+            else
+            {
+                MessageBox.Show("La connexion avec le port série a été perdue ! Veuillez rebrancher le module et relancer l'application");
+                this.Invoke((MethodInvoker)(() => { this.Close(); }));
+            }
+        }
 
 		private void Afficheur_FormClosing(object sender, FormClosingEventArgs e)
 		{
