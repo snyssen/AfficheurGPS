@@ -351,11 +351,10 @@ namespace AfficheurGPS
                             }
                         }
 
-                        // restart
+                        // restart affichage des pages
                         ReadyToShow = true;
                         IndexOfShowedPage = 0;
-                        MyTimer.Start();
-                        // TODO -> Afficher les pages
+                        MyTimer.Start(); // le timer change la page affichée à chaque tick (avec un tick toutes les 30 sec)
 
                     }
                 }
@@ -403,9 +402,9 @@ namespace AfficheurGPS
                     priorite = "faible";
                     break;
             }
-            sw.WriteLine("<p class=\"" + priorite + "\">");
+            sw.WriteLine("<h3 class=\"" + priorite + "\">");
             sw.WriteLine(i_message);
-            sw.WriteLine("</p>");
+            sw.WriteLine("</h3>");
             string FileName = Path.GetFileName(i_lienimage);
             sw.WriteLine("<img src=\"../Images/" + FileName + "\"/>");
             sw.WriteLine
