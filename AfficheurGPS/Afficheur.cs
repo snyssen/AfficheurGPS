@@ -28,6 +28,9 @@ namespace AfficheurGPS
 		double CurrentLat, CurrentLong;
 		Thread ThGetPos;
         string curDir = Directory.GetCurrentDirectory();
+        private string PathToPics; // Chemin d'accès où l'afficheur pourra stocker les images qui téléchargera du serveur
+        bool ReadyToShow;
+        int IndexOfShowedPage, TickCount; // Index de la page affichée en ce moment && Nombre de Ticks actuel du timer (permet de compter une heure pour refresh les infos)
 
         // Configuration de connexion
         private string server = "192.168.1.12";
@@ -39,11 +42,12 @@ namespace AfficheurGPS
 		private string sshPassword = "@dminRoot12";
 		private string sshHostFingerPrint = "ssh-ed25519 256 32:26:b0:fa:5d:bf:8f:60:66:0b:36:7a:c4:7a:b7:e3";
 
-		private string PathToPics = @"E:\"; // Chemin d'accès où l'afficheur pourra stocker les images qui téléchargera du serveur
-
 		public Afficheur()
 		{
+            ReadyToShow = false;
 			InitializeComponent();
+            PathToPics = curDir + "\\Images";
+
 			SIM808 = new SerialPort
 			{
 				ReadTimeout = 1000, // Permet l'envoi d'une erreur timeout si la méthode ReadLine() ne reçoit aucune donnée après 1 secondes
@@ -180,6 +184,11 @@ namespace AfficheurGPS
 
         private void StartGetPosition()
         {
+            // reset affichage des pages
+            ReadyToShow = false;
+            MyTimer.Stop();
+            TickCount = 0;
+
             this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGPS.html", curDir));
             ThreadStart ThStGetPos = new ThreadStart(GetPosition);
             ThStGetPos += CallbackGetPosition;
@@ -289,6 +298,11 @@ namespace AfficheurGPS
                     Console.WriteLine(CreateHeadline("SSH & SCP"));
                     bool error = false;
                     WinSCP_Utilitaries scp = new WinSCP_Utilitaries(server, sshUser, sshPassword, sshHostFingerPrint);
+
+                    // On vide le dossier d'images avant de télécharger les nouvelles
+                    DirectoryInfo di = new DirectoryInfo(curDir + "\\Images");
+                    foreach (FileInfo file in di.GetFiles()) { file.Delete(); }
+
                     for (int i = 0; i < messages[2].Count; i++)
                     {
                         Console.WriteLine("Remote path to file : " + messages[2][i]);
@@ -309,7 +323,39 @@ namespace AfficheurGPS
                     {
                         this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGen.html", curDir));
 
-                        // TODO : ajouter génération des pages ICI
+                        // On vide le dossier de pages générées (sauf css)
+                        di = new DirectoryInfo(curDir + "\\GeneratedPages");
+                        foreach (FileInfo file in di.GetFiles())
+                        {
+                            if (file.Extension != ".css")
+                                file.Delete();
+                        }
+
+                        // Génération des pages
+                        for (int i = 0; i < messages[0].Count; i++)
+                        {
+                            if
+                            (
+                                int.TryParse(messages[0][i], out int id_information)
+                                && int.TryParse(messages[3][i], out int i_priorite)
+                            )
+                            {
+                                string i_message = messages[1][i];
+                                string i_lienimage;
+                                try
+                                {
+                                    i_lienimage = messages[2][i];
+                                }
+                                catch (IndexOutOfRangeException) { i_lienimage = null; }
+                                GeneratePage(id_information, i_priorite, i_message, i_lienimage);
+                            }
+                        }
+
+                        // restart
+                        ReadyToShow = true;
+                        IndexOfShowedPage = 0;
+                        MyTimer.Start();
+                        // TODO -> Afficher les pages
 
                     }
                 }
@@ -323,6 +369,52 @@ namespace AfficheurGPS
                 MessageBox.Show("La connexion avec le port série a été perdue ! Veuillez rebrancher le module et relancer l'application");
                 this.Invoke((MethodInvoker)(() => { this.Close(); }));
             }
+        }
+
+        private void GeneratePage(int id_information, int i_priorite, string i_message, string i_lienimage)
+        {
+            StreamWriter sw = new StreamWriter(Path.Combine(curDir + "\\GeneratedPages", id_information + ".html"));
+            sw.WriteLine
+            (
+                "<!DOCTYPE html>\n"
+                + "<html lang=\"en\" xmlns=\"http://www.w3.org/1999/xhtml\">\n"
+                + "<head>\n"
+                + "<meta charset=\"utf - 8\"/>"
+            );
+            sw.WriteLine("<title>" + id_information + "</title>");
+            sw.WriteLine
+            (
+                "<link rel=\"stylesheet\" href=\"style.css\"/>\n"
+                + "</head>\n"
+                + "<body>\n"
+                + "<div class=\"wrapper\">"
+            );
+            string priorite;
+            switch (i_priorite)
+            {
+                case 3:
+                    priorite = "urgent";
+                    break;
+                case 2:
+                    priorite = "normal";
+                    break;
+                case 1:
+                default:
+                    priorite = "faible";
+                    break;
+            }
+            sw.WriteLine("<p class=\"" + priorite + "\">");
+            sw.WriteLine(i_message);
+            sw.WriteLine("</p>");
+            string FileName = Path.GetFileName(i_lienimage);
+            sw.WriteLine("<img src=\"../Images/" + FileName + "\"/>");
+            sw.WriteLine
+            (
+                "</div>\n"
+                + "</body>\n"
+                + "</html>"
+            );
+            sw.Close();
         }
 
 		private void Afficheur_FormClosing(object sender, FormClosingEventArgs e)
@@ -347,7 +439,29 @@ namespace AfficheurGPS
 			return (double)((double)Deg + ((double)Min / 60) + (Sec / 3600));
 		}
 
-		private string CreateHeadline(string headline)
+        // Le timer tick toutes les 30 secondes
+        private void MyTimer_Tick(object sender, EventArgs e)
+        {
+            TickCount++;
+            if (TickCount >= 120) // Après une heure (120x 30 sec) on refresh les données
+            {
+                StartGetPosition();
+                return;
+            }
+            if (ReadyToShow)
+            {
+                DirectoryInfo di = new DirectoryInfo(curDir + "\\GeneratedPages");
+                FileInfo[] files = di.GetFiles("*.html"); // On récupère toutes les pages
+
+                this.browser.Url = new Uri(String.Format("file:///{0}/GeneratedPages/{1}", curDir, files[IndexOfShowedPage]));
+
+                IndexOfShowedPage++;
+                if (IndexOfShowedPage >= files.Count())
+                    IndexOfShowedPage = 0;
+            }
+        }
+
+        private string CreateHeadline(string headline)
 		{
 			headline = headline.PadLeft(50, '=');
 			headline = headline.PadRight(100, '=');
