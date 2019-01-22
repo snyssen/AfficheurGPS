@@ -40,7 +40,7 @@ namespace AfficheurGPS
 		{
             ReadyToShow = false;
 			InitializeComponent();
-            PathToPics = curDir + "\\Images";
+            PathToPics = curDir;
 
 			SIM808 = new SerialPort
 			{
@@ -61,6 +61,10 @@ namespace AfficheurGPS
 			{
                 // On récupère la position de l'afficheur
                 StartGetPosition();
+                // TEST
+                //CurrentLong = 5.586936;
+                //CurrentLat = 50.623461;
+                //CallbackGetPosition();
 			}
 		}
 
@@ -294,8 +298,8 @@ namespace AfficheurGPS
                     WinSCP_Utilitaries scp = new WinSCP_Utilitaries(server, sshUser, sshPassword, sshHostFingerPrint);
 
                     // On vide le dossier d'images avant de télécharger les nouvelles
-                    DirectoryInfo di = new DirectoryInfo(curDir + "\\Images");
-                    foreach (FileInfo file in di.GetFiles()) { file.Delete(); }
+                    //DirectoryInfo di = new DirectoryInfo(curDir + "\\Images");
+                    //foreach (FileInfo file in di.GetFiles()) { file.Delete(); }
 
                     for (int i = 0; i < messages[3].Count; i++)
                     {
@@ -318,12 +322,12 @@ namespace AfficheurGPS
                         this.browser.Url = new Uri(String.Format("file:///{0}/WaitingGen.html", curDir));
 
                         // On vide le dossier de pages générées (sauf css)
-                        di = new DirectoryInfo(curDir + "\\GeneratedPages");
-                        foreach (FileInfo file in di.GetFiles())
-                        {
-                            if (file.Extension != ".css")
-                                file.Delete();
-                        }
+                        //di = new DirectoryInfo(curDir + "\\GeneratedPages");
+                        //foreach (FileInfo file in di.GetFiles())
+                        //{
+                        //    if (file.Extension != ".css")
+                        //        file.Delete();
+                        //}
 
                         // Assignation des messages en global
                         Messages = messages;
@@ -360,7 +364,7 @@ namespace AfficheurGPS
             List<int> IndexGlo = new List<int>();
 
             string Message = "<!DOCTYPE html><html><head><meta charset=\"utf - 8\"/><title>Affichage</title><link rel=\"stylesheet\" href=\"Style.css\"><h2>Informations du jour <img id=\"Logo\" src=\"logo.png\" alt=\"Logo de l'école\">";
-            StreamWriter sw = new StreamWriter("~/Index.html", false);
+            StreamWriter sw = new StreamWriter("Index.html", false);
             sw.Write(Message);
 
             //Va rechercher la priorité pour voir le type de message
@@ -425,7 +429,7 @@ namespace AfficheurGPS
             List<int> IndexDay = new List<int>();
 
             string Message = "<!DOCTYPE html><html><head><meta charset=\"utf - 8\"/><title>Affichage</title><link rel=\"stylesheet\" href=\"Style.css\">";
-            StreamWriter sw = new StreamWriter("~/Index.html", false);
+            StreamWriter sw = new StreamWriter("Index.html", false);
             sw.Write(Message);
 
             //Va rechercher la priorité pour voir le type de message
@@ -513,6 +517,7 @@ namespace AfficheurGPS
                     GeneratePageGlob(Messages);
                 else
                     GeneratePageJour(Messages);
+                this.browser.Url = new Uri(String.Format("file:///{0}/Index.html", curDir));
             }
         }
 
