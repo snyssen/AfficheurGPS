@@ -66,8 +66,12 @@ namespace AfficheurGPS
 			else
 			{
                 // On récupère la position de l'afficheur
-                StartGetPosition();
-			}
+                // TEST StartGetPosition();
+                // TEST
+                CurrentLong = 5.586936;
+                CurrentLat = 50.623461;
+                CallbackGetPosition();
+            }
 		}
 
 		private void Afficheur_Load(object sender, EventArgs e)
@@ -305,13 +309,14 @@ namespace AfficheurGPS
 
                     for (int i = 0; i < messages[2].Count; i++)
                     {
-                        Console.WriteLine("Remote path to file : " + messages[2][i]);
+                        
                         // Si le message contient un chemin d'accès (supposé valide)...
                         if (messages[2][i] != null && messages[2][i].Trim() != "")
                         {
+                            Console.WriteLine("Remote path to file : " + messages[2][i]);
                             // On télécharge le fichier (supposé une photo) et on sauvegarde son chemin d'accès local
                             messages[2][i] = scp.DowloadPic(messages[2][i], PathToPics);
-                            if (messages[2][i] != null)
+                            if (!string.IsNullOrWhiteSpace(messages[2][i]))
                             {
                                 Console.WriteLine("File saved in " + messages[2][i]);
                             }
@@ -355,7 +360,7 @@ namespace AfficheurGPS
                         ReadyToShow = true;
                         IndexOfShowedPage = 0;
                         MyTimer.Start();
-                        // TODO -> Afficher les pages
+                        MyTimer_Tick(null, null); // force à afficher la première page
 
                     }
                 }
@@ -403,11 +408,14 @@ namespace AfficheurGPS
                     priorite = "faible";
                     break;
             }
-            sw.WriteLine("<p class=\"" + priorite + "\">");
+            sw.WriteLine("<h1 class=\"" + priorite + "\">");
             sw.WriteLine(i_message);
-            sw.WriteLine("</p>");
-            string FileName = Path.GetFileName(i_lienimage);
-            sw.WriteLine("<img src=\"../Images/" + FileName + "\"/>");
+            sw.WriteLine("</h1>");
+            if (!string.IsNullOrWhiteSpace(i_lienimage))
+            {
+                string FileName = Path.GetFileName(i_lienimage);
+                sw.WriteLine("<img src=\"../Images/" + FileName + "\"/>");
+            }
             sw.WriteLine
             (
                 "</div>\n"
